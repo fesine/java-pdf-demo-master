@@ -1,0 +1,669 @@
+## <center>消息管理平台项目调研</center>
+
+### 一、平台介绍
+
+模块：
+
+- 消息后管系统(mmpc)：主要提供后管人员消息模板管理、文件上送等功能；
+- 消息推送平台(mmpp)：主要实现网络核心内系统消息推送功能，包括APP、短信、邮件消息的推送，历史消息查询等功能。
+
+### 二、技术架构
+
+#### 	2.1 技术栈
+
+​	主要使用的技术组件包括：tomcat、spring framework、dap、redis、activeMQ、mybatis、mysql、quartz、freemarker、java mail、gexin(弃用)、jpsuh、jsch、httpmime、servlet、jsp、logback
+
+#### 	2.2 架构部署图
+
+详见《技术架构图.drawio》
+
+### 三、业务介绍
+
+#### 3.1 主要数据模型
+
+1. push_template_info //模板信息表，所有的消息发送都需要存在模板信息
+2. push_app_info //app配置表，发送app消息时需要对应的app配置信息
+3. push_sms_config //短信配置表，所有发送的短信需要有对应的sms配置信息
+4. push_market_config //营销配置表
+5. push_email_config //旧邮件系统配置表，邮件系统配置参数
+6. push_retire_info //退订信息表
+7. sys_dict //系统字典，请求系统需要存在对应的配置信息
+8. push_task_msg //待发送消息表，存储所有日间发送和三次以内待重发的信息数据
+9. push_task_msg_his //消息发送历史表，存储所有已经发送的消息记录
+10. push_task_msgfile //定时任务处理文件系统共享文件记录表
+11. push_app_sendsucc  //app消息发送成功登记表，分库分表4节点32分片
+12. push_app_sendsucc_his  //app消息发送成功历史表，分库分表4节点32分片
+13. push_log_sendsucc //发送成功日志表，已弃用，分库分表4节点32分片
+14. push_log_sendsucc_his //发送成功日志历史表，已弃用，分库分表4节点32分片
+15. push_notice_sendsucc //需要在通知栏展示的消息，成功登记表，分库分表4节点32分片
+16. push_sms_sendsucc //短信和邮件发送成功登记表，分库分表4节点32分片
+17. push_sms_sendsucc_his //短信和邮件发送成功历史表，分库分表4节点32分片
+18. push_log_sendfail //发送失败日志表
+19. push_log_emailsendfail //新邮件系统发送失败登记表
+
+#### 3.2  业务分析
+
+##### 3.2.1 实时类交易
+
+###### 3.2.1.1 dubbo
+
+1. SingleAppSendService   单笔APP消息发送
+
+2. GroupAppSendService 群组APP消息发送
+
+3. SmsSendService SMS消息发送
+
+4. MailSendService 邮件发送（旧邮件系统）
+
+5. BusinessGroupAppSendService 企业银行APP的APP群组消息发送
+
+6. BusinessSingleAppSendService 企业银行APP的APP单点消息发送
+
+7. BusinessSmsSendService 企业银行SMS短信发送
+
+   ```
+   以上7个接口，其主要实现业务逻辑完全相同。总的流程就是接收请求，数据校验，根据数据渲染模板，推送给客户。
+
+   参数校验->查询消息模板并渲染->查询营销内容->(短信)查询退订内容->发送到消息队列(如果发送失败则保存到待发送任务表)PushJmsProducerUtils
+
+   监听队列消息->签收消息->判断模板发送类型
+
+   ->日间发送->
+
+   ​	判断当前时间(设置发送时间，登记到待发送任务表)，结束
+
+   ​	处理消息(根据不同的渠道，对应上面不同接口的传参，处理消息)PushJmsConsumerUtils
+
+   ->根据custNo判断是群组消息还是单个消息->再次查询消息模板(不存在报错)
+
+   ->判断渠道->
+
+   ​	APP渠道(如果没有pushTarget，结束)，否则调用极光推送API
+
+   ​	短信渠道，调用短信平台
+
+   ​	邮件渠道，调用邮件系统
+
+   ​	->操作成功，判断是否在消息中心显示->
+
+   ​		不在消息中心展示，直接登记成功数据到push_notice_sendsucc表
+
+   ​		需要在消息中心展示，app登记到push_app_sendsucc，短信和邮件登记到push_sms_sendsucc，同时缓存数据到redis中
+
+   ->发送失败，达到重试3次的次数或者是群组消息类型，登记到失败日志表，否则登记到待发送到表
+   ```
+
+
+
+8. HisMsgQueryService 查询30天前到现在的历史消息
+
+9. HisMsgDeleteService 根据custNo和logId逻辑删除APP当天历史消息
+
+10. QueryMarketingTempletsService 数字营销系统模板查询
+
+11. DeleMsgQueryService APP删除消息查询服务
+
+12. HisEveryMsgQueryService APP广播消息查询服务
+
+**8-12接口服务，即根据条件从对应的数据库中查询数据返回给调用端或根据条件更新数据库数据。**
+
+13. HarvestSecretaryQueryService 从redis中查询丰收头条消息
+
+###### 3.2.1.2 新邮件系统
+
+1. EmailTemplateSendService 邮件消息发送
+
+   组装数据使用EmailAdapter.sendEmail方法发送邮件url /api/mail/sendtemplate
+
+2. EmailTemplateListService 邮件模板列表查询
+
+   组装查询条件使用EmailAdapter.executeRequest方法查询url /api/template/list
+
+3. EmailTemplateGetService 邮件模板详情查询
+
+   组装查询条件使用EmailAdapter.executeRequest方法查询url /api/template/get
+
+4. EmailTemplateDeleteService 删除邮件模板
+
+   组装删除条件使用EmailAdapter.executeRequest方法删除url /api/template/delete
+
+5. EmailTemplateSaveVerifyService 保存或更新模板(提交审核)
+
+   组装请求条件使用EmailAdapter.executeRequest方法操作url /api/template/saveOrUpdateWithVerify
+
+6. EmailTemplateVerifyService 邮件模板审核提交
+
+   /api/template/templateVerify
+
+7. EmailSendDataService 邮件发送统计
+
+   /api/data/statistics/sendData
+
+8. EmailStatusService 邮件投递状态
+
+   /api/delivery/emailStatus/findPage
+
+9. EmailTemplateLibService 模板库列表
+
+   /api/templateLib/list
+
+10. EmailTemplateLibShowService 模板库模板预览
+
+    /api/templateLib/show
+
+11. EmailDeleteSubmitVerifyService 模板删除提交审核
+
+    /api/template/deleteSubmitVerify
+
+###### 3.2.1.3 rest
+
+1. /mmpp/msgRejectAndOpen 邮件系统对接合约系统开通与退订
+2. /mmpp/initRedisDatas 初始化redis数据
+3. /mmpp/testSceneToRetire 执行场景与退订关系同步任务
+4. /mmpp/testSyncAppMsg 执行同步app消息
+5. /mmpp/testResendFail 执行失败短信重发任务
+6. /mmpp/getSquence 调用dubbo接口获取序列
+7. /mmpp/testSingApp 调用dubbo接口发送单个消息
+8. /mmpp/testEmail 调用dubbo接口发送邮件
+9. /mmpp/testSms 调用dubbo接口发送短信
+10. /mmpp/createAccount 创建邮箱账户
+11. /mmpp/sendMail 调用本地方法发送邮件
+12. /mmpp/sendSms 调用本地方法发送短信
+
+###### 3.2.1.4 socket
+
+1. SmsRejectSocketServer 短信上行服务，短信退订/开通服务
+
+##### 3.2.2 非实时类交易
+
+###### 3.2.2.1 接口调用
+
+1. MsgFileNoticeService 消息文件通知
+
+   **9G9S00数字客户系统**，单个文件，登记数据到待处理消息文件表push_task_market_msgfile
+
+   **9I9S00数字营销系统**，多个文件遍历登记数据到待处理消息文件表push_task_market_msgfile
+
+   **9S9W00退订检查**，取文件列表中的第一个文件，异步调用FileToSendTask处理。与FileInteNoticeService中`9S9W00`分支相同。
+
+   **其他数据类型**，异步调用FileParseTask处理
+
+2. FileInteNoticeService 文件交互通知
+
+   **9S9W00退订检查的数据类型文件**，所有分支需要回调文件系统dubbo服务接口，通知处理结果。(FileToSendTask)异步解析文件数据，组装渲染数据，对于app和sms消息发送到mq，后续处理流程和消费mq消息处理流程完全相同；email直接调用EmailAdapter.sendEmail方法发送邮件。
+
+   **9I9S00多个文件交互处理的数据类型文件**，(FileParseTask)解析文件，校验数据，数据校验不通过，直接登记PUSH_LOG_SENDFAIL表；否则渲染数据，根据不的渠道APP、SMS、Email调用PushJmsProducerUtils方法将数据发送到对应的非实时mq队列
+
+###### 3.2.2.2 定时轮循
+
+1. DfsNtcNtcdwhJob 数仓供数  0 30 23 * * ? 每天23点30分触发
+
+   - 调用dubbo服务接口AS_DFS_NTC_NTCDWH，通知文件系统数据已经准备完成
+
+2. ScanMsgTaskJob 待发送任务表 0/30 * * * * ? 每30秒触发
+
+   - 查询5000条，开始发送时间小于当前时间的PUSH_TASK_MSG数据，进行消息发送，处理逻辑和单条消息发送接口业务流程相同，短信消息改由100条一次批量发送。
+   - 优化思路：
+     - 如何查询需要待发送的目标数据，涉及到sql优化；按三个发送渠道分别查询固定数量(参数可配置)的数据；
+     - 对查询出的数据立即更新IS_DEAL='Y'；
+     - 不再发送到mq，由当前代码直接调用消息发送工具类；
+     - 判断是否是日间发送可以取消，查询出的数据已经保证了是可以立即发送的数据；
+
+3. MoveMsgTaskToHisJob 转移待发送任务表数据至历史表  0/5 * 2-3 * * ? 每天凌晨2点-3点每5秒钟触发一次
+
+   - 查询2000条，已处理成功的待发送任务PUSH_TASK_MSG数据,转移至历史表PUSH_TASK_MSG_HIS，并删除PUSH_TASK_MSG中对应的数据
+
+4. BatchPublishJob 批量消息发布 0/30 * * * * ? 每30秒触发
+
+   - 查询PUSH_PUBLISH_BATCH表中待发送的批量申请(是否处理:未处理N,删除标记:未删除0)数据
+
+   - 更新数据为是否处理:处理中R
+
+   - 遍历数据列表，异步调用FileToSendTask发送消息，同时更新数据为已处理Y
+
+5. ManualPublishJob 手工编辑消息发布 0/30 * * * * ? 每30秒触发
+
+   - 查询PUSH_PUBLISH_MANUAL表中待发送的批量申请(是否处理:未处理N,删除标记:未删除0)数据
+
+   - 更新数据为是否处理:处理中R
+
+   - 遍历数据列表，更新数据为已处理Y，后续处理逻辑和单条消息发送接口业务流程相同
+
+6. SyncSceneToRetireJob 同步场景与退订关系 0 0 3 * * ? 每天凌晨3点触发
+
+   - 获取PUSH_TEMPLATE_INFO和PUSH_RETIRE_EMAIL_INFO中模版与退订ID关系数据列表(条件退订id不为空，删除标记:未删除0)
+
+   - 组装文件行数据，格式：templateCode|||rejectId|||versions
+
+   - 将列表数据写入文件。文件路径/home/mmp/share/sync/9S9S01/yyyyMMdd/MMP_uuid.ok
+
+   - 通过调用AS_DFS_NTC_DASYNC接口，通知目标系统MFS、CCL处理文件。
+
+7. EmailSysToRetireJob 同步邮件与退订关系 0 0 1 * * ? 每天凌晨1点触发
+
+   - 调用邮件系统/api/rejectConfig/list 获取邮件模板退订关系列表
+   - 清空PUSH_RETIRE_EMAIL_INFO表数据
+   - 重新插入列表数据到PUSH_RETIRE_EMAIL_INFO表
+
+8. ScanMsgFileJob 扫描消息文件 0 0/15 * * * ? 每15分钟触发一次
+
+   - 从sys_dict表中查询type=scanFile的数据列表
+   - 根据yyyyMMdd日期格式查找对应路径下的文件列表
+   - 遍历文件列表，修改后缀.do文件名后缀为.ok
+   - 插入文件路径数据到push_task_msgfile表中
+
+9. DealMsgFileJob 处理消息文件 0 0/30 * * * ? 每30分钟触发一次
+
+   - 从push_task_msgfile表中查询处理状态为未处理0的一条文件数据（但7点前或12点之后不处理生日类型文件dataId!=B19S02）
+   - 更新数据状态为1，处理中
+   - 解析文件，文件渠道只支持APP和SEMAIL
+   - APP渠道数据发送到消息队列PushJmsProducerUtils，
+   - SEMAIL渠道数据判断是否有附件，有附件直接发送邮件系统EmailAdapter.sendEmail，没有附件发送到消息队列PushJmsProducerUtils
+
+10. DealMarketMsgFileJob 处理数字营销精简营销消息文件 0 0/30 8-20 * * ? 每天8-20点每30分钟触发一次
+
+    - 只在8-20点之间处理数据
+    - 查询push_task_market_msgfile表中一条数据，条件：处理状态未处理0，数据类型9G9S00、9I9S00
+    - 解析文件，文件渠道只支持APP、SMS、EMAIL
+    - 第一行数据为文件信息，渠道|||模板号|||版本号|||系统号，进行参数校验
+    - 校验通过更新数据状态为1，处理中
+    - 满2000条处理一次，遍历数据批量发送到消息队列
+
+11. FinanceAppSendJob 查询（12个地区）柜面核心资金变动APP消息 0/10 * * * * ?  每10秒触发
+
+    **业务流程图详见《资金变动流程图.drawio》**
+
+12. BatchFinAppSendJob 查询（12个地区）柜面核心(日终批量)资金变动APP消息 0/30 * 12-23 * * ? 每天12点-23点每30秒触发一次
+
+#### 3.3 调用服务
+
+##### 3.3.1 dubbo服务
+
+###### 3.3.1.1 DFS
+
+- AS_DFS_NTC_DASYNC
+
+  接收数据同步通知，源系统通过系统同步数据文件到NFS后向数据文件系统发出同步通知
+
+- AS_DFS_NTC_DAFKNC
+
+  反馈数据同步结果，目标系统同步数据完成之后向数据文件系统反馈数据同步结果
+
+- AS_DFS_NTC_DAINNC
+
+  数据交互通知
+
+  1. 源系统生成文件之后通知数据文件系统
+  2. 数据文件处理之后通知目标系统
+  3. 目标系统生成结果文件后通知数据文件系统
+  4. 数据文件处理之后通知源系统
+
+- AS_DFS_NTC_NTCDWH
+
+  向数仓供数过程中，数据文件系统接收各系统数据准备完备的通知
+
+###### 3.3.1.2 CCL
+
+- AS_CCL_MSGREJECTANDOPEN
+
+  消息退订登记或开通
+
+- AS_CCL_MSGREJECTCHECKSINGLE
+
+  消息退订校验(单笔)，检查一笔消息是否存在退订
+
+###### 3.3.1.3 IFS
+
+- AS_IFS_APPCAPITALNOTE_QRY
+
+  资金变动APP消息查询
+
+- AS_IFS_PLAPPCAPITALNOTE_QRY
+
+  查询日终批量资金变动APP消息查询
+
+##### 3.3.2 极光推送
+
+详见《农信三方消息推送系统使用说明-关联系统调用API说明-v3.3.pdf》文档
+
+##### 3.3.3 短信平台
+
+详见《短信联机接口.txt》
+
+##### 3.3.4 邮件系统
+
+旧邮件系统：详见邮件发送目录：开发说明.txt，test.jsp,Test.java
+
+新邮件系统：详见《农信API接口文档_20190425.docx》
+
+##### 3.3.5 平台组件
+
+###### 3.3.5.1 seq
+
+- MMP_SERIAL_SEQ dubbo服务调用接口序列，生成业务跟踪号
+- MMP-FINAN-SEQ 资金动账序列，生成请求批次号
+
+###### 3.3.5.2 redis
+
+```java
+		/**
+     * REDIS缓存前缀
+     */
+    //模板
+    public static final String REDIS_TEMPLATE_PREFIX = "template:";
+    //精简营销
+    public static final String REDIS_MARKET_PREFIX = "market:";
+    //退定类型
+    public static final String REDIS_RETIRE_PREFIX = "retire:";
+    //邮件属性
+    public static final String REDIS_EMAIL_PREFIX = "email:";
+    //短信属性
+    public static final String REDIS_SMS_PREFIX = "sms:";
+    //APP信息
+    public static final String REDIS_APP_PREFIX = "app:";
+    //字典
+    public static final String REDIS_DICT_PREFIX = "dict:";
+    //标识
+    public static final String REDIS_MARK_PREFIX = "mark:";
+    //银行公告
+    public static final String REDIS_BANK_TITLE="bankTitle:";
+    //交易助手
+    public static final String REDIS_MSG_PREFIX_MSG="msgTrade:";
+    //账户管家
+    public static final String REDIS_ACCOUNT_KEEPER="accountKeeper:";
+    //事务闹钟
+    public static final String REDIS_TRANS_CLOCK="transClock:";
+```
+
+###### 3.3.5.3 mq
+
+```properties
+####################################MQ消息队列名#############################
+#实时短信队列
+mq.realtimesms.queuename=MMPMQ_SYNSMS_Queue_MMP001
+#非实时短信队列
+mq.nonrealtimesms.queuename=MMPMQ_ASYSMS_Queue_MMP001
+#实时APP队列
+mq.realtimeapp.queuename=MMPMQ_SYNAPP_Queue_MMP001
+#非实时APP队列
+mq.nonrealtimeapp.queuename=MMPMQ_ASYAPP_Queue_MMP001
+#实时邮件队列
+mq.realtimeemail.queuename=MMPMQ_SYNEML_Queue_MMP001
+#非实时邮件队列
+mq.nonrealtimeemail.queuename=MMPMQ_ASYEML_Queue_MMP001
+#消息发送队列
+mq.push.queuename=MFSMQ_MPUSH_Queue_MMP001
+#扫描文件邮件发送队列
+mq.scanemail.queuename=MMPMQ_SCANEML_Queue_MMP001
+#实时资金变动APP队列
+mq.realtimeappfina.queuename=MMPMQ_SYNAPPFINA_Queue_MMP001
+#非实时资金变动APP队列
+mq.nonrealtimeappfina.queuename=MMPMQ_ASYAPPFINA_Queue_MMP001
+#营销类批量文件APP消息队列
+mq.batchfileappmsg.queuename=MMPMQ_BATCHFILEAPP_Queue_MMP001
+#####################################MQ生产者#########################
+```
+
+
+
+#### 3.4 文件处理
+
+##### 3.4.1 文件格式
+
+9S9W00读取文件格式：
+
+```
+读取文件名格式：源系统三位系统标识_REJECTCHECK_YYYYMMDD_NNNNNN(6位序号).txt
+数据头行数：0
+分隔符：|
+数据列数量：4
+数据列属性：
+序号|机构号|手机号|内容
+数据行示例：
+01|801000|13800138000|退订内容
+```
+
+9S9W00生成文件格式：
+
+```
+生成文件名格式：MMP_REJECTCHECK_YYYYMMDD_NNNNNN(6位序号).txt
+数据头行数：0
+分隔符：|
+数据列数量：4
+数据列属性：
+序号|手机号|退订ID|内容
+数据行示例：
+01|13800138000|MXXX0000001|0
+```
+
+通用SMS文件格式：
+
+```
+数据头行数：0
+分隔符：|
+数据列数量：4
+数据列属性：
+序号|机构号|手机号|内容
+数据行示例：
+01|801000|13800138000|消息内容
+```
+
+通用Email文件格式：
+
+```
+数据头行数：0
+分隔符：|
+数据列数量：5
+数据列属性：
+序号|机构号|邮箱|邮件标题|邮件内容
+数据示例：
+```
+
+通用APP文件格式：
+
+```
+数据头行数：0
+分隔符：|
+数据列数量：7
+数据列属性：
+序号|机构号|clientId(32位)|客户号|弹窗展示内容|标题|内容
+数据示例：
+```
+
+
+
+##### 3.4.2 FileBatchTask
+
+只涉及到9S9W00读写文件操作，渠道是短信渠道。代码其他渠道分支并没有对应的功能实现。
+
+##### 3.4.3 FileToSendTask
+
+##### 3.4.4 FileParseTask
+
+#### 3.5 关联系统
+
+详见《关联系统部署图.drawio》
+
+#### 3.6 代码分析
+
+- 整个工程代码是基于springmvc框架进行开发，项目打包成war包运行在tomcat容器中；
+
+- dubbo服务部分，集成dap平台，使用Iservice接口进行代码开发；
+
+- 业务流程的驱动跳转均基于方法调用实现；
+
+- 数据库持久层基于mybatis实现，对于高频查询结合redis缓存，降低数据库压力；
+
+- 除dubbo服务自带负载均衡之外，其他消息发送的服务通过mq实现负载均衡，但对于rest服务没有发现有对应的负载均衡机制；
+
+- 核心dto是com.yitong.mms.support.PushMsgDto，所有渠道的消息发送都需要封装成PushMsgDto；
+
+- 核心处理类是com.yitong.mms.support.jms.PushJmsConsumerUtils，所有渠道的消息都需要通过此类中的dealMqMsg方法处理；
+
+### 四、测试概况
+
+#### 4.1 测试环境
+
+##### 4.1.1 SIT
+
+应用部署：暂无
+
+F5地址：158.222.65.235:8066/mpush
+
+clusterDB地址：158.222.14.29/30:8066/mpush
+
+##### 4.1.2 UAT
+
+应用部署：158.222.188.145 mmp@mmp
+
+部署目录：/opt/apache-tomcat/apache-tomcat-9.0.36/webapps/mmpp
+
+日志目录：/home/mmp/logs/mmpp/
+
+共享存储目录：/home/mmp/share
+
+F5地址：158.222.65.235:8067/mpush
+
+clusterDB地址：158.222.188.181/183:8066/mpush
+
+短信地址：主号：158.222.65.62，副号：158.222.74.13，端口：5051
+
+极光推送：极光64位：http://158.220.8.44:19091，极光32位：http://158.222.188.174:19090
+
+邮件系统：通过代码查看，暂无测试环境的邮件服务器，配置的地址均为生产环境IP
+
+##### 4.1.3 准生产
+
+**应用部署**：
+
+**158.222.187.208**
+
+- 非实时定时任务，不包括资金动账
+
+- dubbo接口`不包括`：
+  - AS_MMP_MP_P2GAPPPUSH（群组app推送）
+  - AS_MMP_MP_MAILPUSH（邮件推送）
+  - AS_MMP_MP_SMSPUSH（短信推送）
+
+**158.222.187.209**
+
+- 非实时定时任务，只包括资金动账
+
+- dubbo接口`不包括`：
+  - AS_MMP_MP_P2PAPPPUSH（单个app推送）
+  - AS_MMP_MP_P2GAPPPUSH（群组app推送）
+  - AS_MMP_MP_MAILPUSH（邮件推送）
+  - AS_MMP_MP_SMSPUSH（短信推送）
+
+**158.222.187.210**
+
+- 实时交易，不包括定时任务
+
+- dubbo接口`只包括`：
+  - AS_MMP_MP_P2PAPPPUSH（单个app推送）
+  - AS_MMP_MP_P2GAPPPUSH（群组app推送）
+  - AS_MMP_MP_MAILPUSH（邮件推送）
+  - AS_MMP_MP_SMSPUSH（短信推送）
+  - AS_MMP_MP_BUSINESSSMSPUSH（企业银行短信推送）
+  - AS_MMP_MP_BUSINESSP2PAPPPUSH（企业银行单个app推送）
+  - AS_MMP_MP_BUSINESSP2GAPPPUSH（企业银行群组app推送）
+
+F5地址：158.222.193.248:8067/mpush
+
+clusterDB地址：158.222.165.84/85:8067/mpush
+
+短信地址：主号：158.222.65.62，副号：158.222.74.13，端口：5051
+
+极光推送：极光64位：http://158.220.8.44:19091，极光32位：http://158.222.188.174:19090
+
+邮件系统：通过代码查看，暂无测试环境的邮件服务器，配置的地址均为生产环境IP
+
+#### 4.2 测试分析
+
+1. 本地开发机环境，无法进行测试？会出现redis数据乱码问题，必须到测试环境进行测试
+2. 各测试环境是否有专门的联调测试，如何保证所有的分支都可以被测试覆盖？
+
+#### 4.3 性能测试
+
+参照《PR2020000040-VER-15-性能测试报告-v1.0(消息管理平台年度).pdf》文件
+
+### 五、生产运维
+
+#### 5.1 部署统计
+
+生产环境：
+
+- 非实时业务：12台（其中6台使用的新的MQ集群）
+
+- 资金变动业务：11台（其中6台使用的新的MQ集群）
+
+- 实时业务：14台
+
+- 后管服务：2台
+- MQ集群地址：178.16.106.10，178.16.106.11，178.16.106.12，178.16.106.13
+- 新MQ集群地址：177.222.179.35，177.222.179.36，177.222.179.37，177.222.179.38
+
+灾备环境：
+
+- 非实时业务：4台，启用1台
+- 资金变动业务：4台，启用0台
+- 实时业务：4台，启用1台
+- 后管服务：2台，启用0台
+
+#### 5.2 交易量统计
+
+截止2020-12-29，
+
+- app消息成功总量586,342,663，前一天数据量10,555,925；
+
+- app消息只推送消息中心不展示总量2,718,232，前一天数据量89,982；
+
+- 短信发送成功总量140,844,670，前一天数据量654,968。
+
+#### 5.3 问题统计
+
+- 因数据参数问题导致短信模板渲染错误；
+
+- 灾备环境，因没有配置日志清理策略导致磁盘使用率过高。
+
+#### 5.4 运维重点
+
+- 虚拟机运行状态
+- JVM及tomcat容器运行状态
+- 业务日志是否有异常日志输出
+- 日志迁移功能是否正常
+- 文件共享存储目录是否正常，包括磁盘空间大小
+- mq消息队列出队入队是否正常
+
+### 六、存在问题
+
+#### 6.1 项目问题
+
+暂无。
+
+#### 6.2 业务问题
+
+1. PushJmsConsumerUtils类中invokeAppGroupApi和invokeThirdInterface两个方法中的业务流程顺序相反。经过确认是在极光推送群组消息时会出现超时的情况，引起群组发送方法流程无法正常结束，导致本地数据库操作无法正常执行。因此群组消息在推给极光之前先入库，如果正常结束，再更新数据库。（待优化）
+
+#### 6.3 代码问题
+
+1. 代码冗余，以资金变动APP消息定时任务来看，一个地区就对应一个类，类中代码只有一个地区参数不同，其他代码完全相同。此完全就可以使用一个类就能满足所有地区的数据处理；关于多个渠道发送消息的代码，也存在大量的重复处理；
+2. Map的大量使用，导致系统可读性差，安全性差，可维护性差，容易引发错误
+   - 可读性差：主要表现在无法确定接收的map参数有哪些字段，具体含义是什么
+   - 安全性差：如果使用map接收接口请求，有可能出现请求的传参数据和接口入参不相符，可以进行任意传参
+   - 可维护性差：如果修改一个表字段，使用map传参，会导致无法感知到已经被修改的字段，尤其在开发阶段无法使用IDE进行提示，或者出现修改参数不彻底，有些map参数中可能已修改，但其他引用的代码，就有可能没有被修改
+   - 因此，建议使用有意义的java对象代替map
+3. 大量的if else嵌套使用，导致代码可读性差、可维护性差，业务逻辑错综复杂
+4. 重复的参数校验
+5. 大量存在臃肿代码的方法
+6. 数据库表结构混乱，可能是中间修改过多次表结构；大量使用扩展参数，可维护性差
+7. 消息队列主题过多？
+8. 多种服务协议并存，是否有必要？经确认，rest服务用于测试环境测试，可以删除
+9. 日志是否需要打印如此之多？日志级别的规范输出？
+
+#### 6.4 数据库问题
+
+详见《MPUSH表优化清单.pdf》
+
+### 七、优化措施
+

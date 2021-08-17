@@ -1,0 +1,43 @@
+server:
+  port: 8801
+
+pdf:
+  static:
+    template:
+      dir: pdf/templates
+      name: image_freemarker.html
+    font:
+      dir: pdf/fonts
+    image:
+      dir: pdf/img
+    js:
+      dir: pdf/js
+      name: code.js
+    tmp:
+      dir: ${user.dir}/temp #java.io.tmpdir 可以是通过系统变量获取目录也可以是绝对路径
+  server:
+    template: http://localhost:${server.port}${server.servlet.context-path:/}temp/static/${pdf.static.template.name}
+
+#freemarker
+#spring:
+#  freemarker:
+#    cache: false
+#    settings:
+#      template_update_delay: 0  #检查模板更新延迟时间，设置为0表示立即检查，如果时间大于0会有缓存不方便进行模板测试
+#      template-loader-path: classpath:/templates
+#      charset: UTF-8
+#      check-template-location: true
+#      suffix: .html
+#      content-type: text/html
+#      expose-request-attributes: true
+#      expose-session-attributes: true
+#      request-context-attribute: request
+#tyhmeleaf配置
+spring:
+  thymeleaf:
+    enabled: true  #开启thymeleaf视图解析
+    encoding: utf-8  #编码
+    prefix: classpath:/templates/  #前缀
+    cache: false  #是否使用缓存
+    mode: HTML  #严格的HTML语法模式
+    suffix: .html  #后缀名

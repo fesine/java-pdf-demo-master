@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<!--suppress ThymeleafVariablesResolveInspection-->
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <style th:inline="text">
+        @page  {
+            width: 390mm;
+
+
+        }
+
+        html, body,a {
+            font-family: 'simsun', serif;
+        }
+    </style>
+</head>
+<body >
+<img src="logo.jpg" />
+<img th:src="${imageSrc}"/>
+<div><a>[[${name}]]</a></div>
+</body>
+</html>
