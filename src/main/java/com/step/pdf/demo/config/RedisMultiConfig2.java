@@ -11,6 +11,6 @@ import com.step.pdf.demo.multiconfig.annotation.MultiConfig;
  * @author: fesine
  * @updateTime:2021/9/17
  */
-@MultiConfig(prefix = "my")
-public class MyMultiConfig extends MultiBaseConfig<MyConfig> {
+@MultiConfig(prefix = "redis")
+public class RedisMultiConfig2 extends MultiBaseConfig<RedisConfig> {
 }

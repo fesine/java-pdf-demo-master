@@ -1,10 +1,8 @@
 package com.step.pdf.demo.service.impl;
 
-import com.step.pdf.demo.config.MyConfig;
+import com.step.pdf.demo.config.EsConfig;
 import com.step.pdf.demo.multiconfig.annotation.MultiService;
 import com.step.pdf.demo.service.MyMultiService;
-
-import javax.annotation.Resource;
 
 /**
  * @description: 此服务会有两个iis和jw
@@ -14,15 +12,15 @@ import javax.annotation.Resource;
  * @author: fesine
  * @updateTime:2021/9/18
  */
-@MultiService
+@MultiService(name = "myMultiService")
 public class MyMultiServiceImpl implements MyMultiService {
 
     @MultiService
-    @Resource
-    private MyConfig myConfig;
+    private EsConfig esConfig;
 
     @Override
     public void sayHello() {
-        System.out.println(myConfig.toString());
+        System.out.println(esConfig.toString());
     }
+
 }

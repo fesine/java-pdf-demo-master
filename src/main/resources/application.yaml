@@ -47,7 +47,7 @@ spring:
 phantomjsPath: /Users/fesine/Documents/workspace/DEV-ENV/tools/phantomjs-2.5.0/bin/phantomjs
 screenshotDir: /Users/fesine/Documents/workspace/temp
 
-my:
+es:
   primary: iis
   configMap:
     iis:
@@ -58,3 +58,14 @@ my:
       url: 192.168.0.1
       username: fesine
       password: 888888
+redis:
+  primary: hangzhou
+  configMap:
+    wuxi:
+      url: 10.22.55.1
+      username: admin551
+      password: 111111
+    hangzhou:
+      url: 192.168.66.66
+      username: cvm
+      password: 666666

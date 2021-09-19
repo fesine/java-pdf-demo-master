@@ -1,7 +1,5 @@
 package com.step.pdf.demo.multiconfig.annotation;
 
-import org.springframework.core.annotation.AliasFor;
-
 import java.lang.annotation.*;
 
 /**
@@ -16,17 +14,23 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 public @interface MultiService {
+
     /**
-     * 需要注册的服务组，默认空，注册全部组
+     * 对于同一接口，多种实现，可以通过value来指定名称
      * @return
      */
-    @AliasFor("value")
-    String[] group() default {};
+    String name() default "";
 
     /**
      * 需要注册的服务组，默认空，注册全部组
      * @return
      */
-    @AliasFor("group")
-    String[] value() default {};
+    String[] group() default {};
+
+    /**
+     * 配置文件，通过指定配置文件，将服务注册成对应多组实例
+     * @return
+     */
+    Class<?> config() default Object.class;
+
 }

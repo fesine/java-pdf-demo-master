@@ -1,5 +1,6 @@
 package com.step.pdf.demo.config;
 
+import com.step.pdf.demo.multiconfig.BaseConfig;
 import lombok.Data;
 
 /**
@@ -11,7 +12,7 @@ import lombok.Data;
  * @updateTime:2021/9/17
  */
 @Data
-public class MyConfig {
+public class RedisConfig extends BaseConfig {
 
     private String url;
 

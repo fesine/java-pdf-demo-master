@@ -53,10 +53,11 @@ public class MultiConfigRegister implements ImportBeanDefinitionRegistrar, Envir
                     scanPackageBuilder.getRawBeanDefinition());
             log.info(">>>>>>>>>>>>>>>>>register enableMultiConfigName {} with {}.", enableMultiConfigName,Arrays.toString(basePackages));
             //注册multiConfig中的config类
-            List<Map<String, Object>> groupList = new ArrayList<>();
             // 1. 获取标记注解配置类
             Class<? extends MultiBaseConfig>[] baseConfigClasses =
                     (Class<? extends MultiBaseConfig>[]) enableMultiConfig.get("configs");
+            //7. 暂存配置文件
+            Map<String, MultiBaseConfig> groupMap = new HashMap<>();
             for (Class<? extends MultiBaseConfig> baseConfigClass : baseConfigClasses) {
                 if (!baseConfigClass.isAnnotationPresent(MultiConfig.class)) {
                     throw new BeanCreationException(baseConfigClass.getName() + " not add " +
@@ -74,6 +75,7 @@ public class MultiConfigRegister implements ImportBeanDefinitionRegistrar, Envir
                             "value, please check.");
                 }
                 MultiBaseConfig baseConfig = (MultiBaseConfig) bindResult.get();
+                groupMap.put(baseConfig.getConfigMap().values().iterator().next().getClass().getName(), baseConfig);
                 //4. 判断主配置的值
                 if (StringUtils.isEmpty(baseConfig.getPrimary())) {
                     throw new BeanCreationException(baseConfigClass.getName() + " not set primary " +
@@ -85,14 +87,12 @@ public class MultiConfigRegister implements ImportBeanDefinitionRegistrar, Envir
                         throw new BeanCreationException(baseConfigClass.getName() + " not set " +
                                 "configMap value, please check.");
                     }
-                    //7. 遍历配置
-                    Map<String, Object> groupMap = new HashMap<>();
-                    registerConfigMap(registry, baseConfig, configMap, groupMap);
-                    groupList.add(groupMap);
+
+                    registerConfigMap(registry, baseConfig, configMap);
                 }
             }
 
-            MultiBeanDefinitionScanner scanner = new MultiBeanDefinitionScanner(registry, false, groupList);
+            MultiBeanDefinitionScanner scanner = new MultiBeanDefinitionScanner(registry, false, groupMap);
             scanner.doScan(basePackages);
         }
 
@@ -104,8 +104,7 @@ public class MultiConfigRegister implements ImportBeanDefinitionRegistrar, Envir
      * @param baseConfig
      * @param configMap
      */
-    public void registerConfigMap(BeanDefinitionRegistry registry, MultiBaseConfig baseConfig, Map<String, Object> configMap,Map<String, Object> groupMap) {
-        groupMap.put("clazz", configMap.values().iterator().next().getClass().getName());
+    public void registerConfigMap(BeanDefinitionRegistry registry, MultiBaseConfig baseConfig, Map<String, Object> configMap) {
         for (Map.Entry<String, Object> entry : configMap.entrySet()) {
             Object value = entry.getValue();
             Class<? extends MultiBaseConfig> configClass = (Class<? extends MultiBaseConfig>) value.getClass();
@@ -113,18 +112,16 @@ public class MultiConfigRegister implements ImportBeanDefinitionRegistrar, Envir
                     .genericBeanDefinition(Object.class, () -> value);
             if (entry.getKey().equals(baseConfig.getPrimary())) {
                 beanDefinitionBuilder.setPrimary(true);
-                groupMap.put("primary",entry.getKey());
             }
             registry.registerBeanDefinition(entry.getKey() + configClass.getName(),
                     beanDefinitionBuilder.getRawBeanDefinition());
             log.info(">>>>>>>>>>>>>>>>>register multiConfig {}.",
                     entry.getKey() + configClass.getName());
         }
-        groupMap.put("group", configMap.values());
         //6. 注册配置文件的key group，便于在后期对使用MultiService注解的服务注册多group服务
         BeanDefinitionBuilder groupBuilder = BeanDefinitionBuilder
-                .genericBeanDefinition(Object.class, () -> groupMap);
-        registry.registerBeanDefinition(configMap.values().iterator().next().getClass().getName() + "#key",
+                .genericBeanDefinition(Object.class, () -> baseConfig);
+        registry.registerBeanDefinition(baseConfig.getClass().getName(),
                 groupBuilder.getRawBeanDefinition());
     }
 

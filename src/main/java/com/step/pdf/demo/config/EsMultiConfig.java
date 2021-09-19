@@ -11,6 +11,6 @@ import com.step.pdf.demo.multiconfig.annotation.MultiConfig;
  * @author: fesine
  * @updateTime:2021/9/17
  */
-@MultiConfig(prefix = "my")
-public class MyMultiConfig2 extends MultiBaseConfig<MyConfig2> {
+@MultiConfig(prefix = "es")
+public class EsMultiConfig extends MultiBaseConfig<EsConfig> {
 }

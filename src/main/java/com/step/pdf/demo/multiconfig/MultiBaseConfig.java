@@ -11,7 +11,7 @@ import java.util.Map;
  * @author: fesine
  * @updateTime:2021/9/17
  */
-public abstract  class MultiBaseConfig<T> {
+public abstract  class MultiBaseConfig<T extends BaseConfig> {
     /**
      * 主实例组名，未配置时默认使用第一组配置
      */
