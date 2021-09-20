@@ -52,20 +52,20 @@ es:
   configMap:
     iis:
       url: 127.0.0.1
-      username: admin
+      username: es-iis
       password: 123456
     jwlog:
       url: 192.168.0.1
-      username: fesine
+      username: es-jwlog
       password: 888888
 redis:
   primary: hangzhou
   configMap:
     wuxi:
       url: 10.22.55.1
-      username: admin551
+      username: redis-wuxi
       password: 111111
     hangzhou:
       url: 192.168.66.66
-      username: cvm
+      username: redis-hangzhou
       password: 666666

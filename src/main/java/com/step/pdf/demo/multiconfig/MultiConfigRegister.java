@@ -88,7 +88,7 @@ public class MultiConfigRegister implements ImportBeanDefinitionRegistrar, Envir
                                 "configMap value, please check.");
                     }
 
-                    registerConfigMap(registry, baseConfig, configMap);
+                    //registerConfigMap(registry, baseConfig, configMap);
                 }
             }
 

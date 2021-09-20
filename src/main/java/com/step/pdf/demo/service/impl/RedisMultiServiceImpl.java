@@ -2,7 +2,7 @@ package com.step.pdf.demo.service.impl;
 
 import com.step.pdf.demo.config.RedisConfig;
 import com.step.pdf.demo.multiconfig.annotation.MultiService;
-import com.step.pdf.demo.service.TestService;
+import com.step.pdf.demo.service.RedisMultiService;
 
 /**
  * @description: 类描述
@@ -12,15 +12,15 @@ import com.step.pdf.demo.service.TestService;
  * @author: fesine
  * @updateTime:2021/9/19
  */
-@MultiService(group = {"wuxi"})
-public class TestServiceImpl implements TestService {
+@MultiService
+public class RedisMultiServiceImpl implements RedisMultiService {
 
 
     @MultiService
     private RedisConfig redisConfig;
 
     @Override
-    public void test() {
-        redisConfig.toString();
+    public void redis() {
+        System.out.println("------>" + redisConfig.toString());;
     }
 }

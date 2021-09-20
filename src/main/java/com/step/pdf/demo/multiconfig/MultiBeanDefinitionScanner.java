@@ -20,6 +20,8 @@ import java.lang.reflect.Field;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
+import static com.step.pdf.demo.multiconfig.constant.Constants.*;
+
 /**
  * @description: 类描述
  * @author: fesine
@@ -30,8 +32,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Slf4j
 public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
-    static final String DEFAULT_RESOURCE_PATTERN = "**/*.class";
-    public static final String GROUP_SEPARATOR = "#";
     private ResourcePatternResolver resourcePatternResolver;
 
     private Map<String, MultiBaseConfig> groupMap;
@@ -41,8 +41,6 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
     private Map<String, Object> BEAN_MAP = new ConcurrentHashMap<>();
 
     private Map<String, Object> GROUP_BEAN_MAP = new ConcurrentHashMap<>();
-
-    private boolean GROUP_FLAG = true;
 
     /**
      * 1、存放所有被配置标记的目标对象的Map
@@ -89,12 +87,30 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
         for (String s : GROUP_BEAN_MAP.keySet()) {
             registerToBeanContainer(s, GROUP_BEAN_MAP.get(s));
         }
+        //注册配置文件
+        for (String configName : groupMap.keySet()) {
+            MultiBaseConfig config = groupMap.get(configName);
+            Map<String, Object> configMap = config.getConfigMap();
+            for (String subKey : configMap.keySet()) {
+                String key = subKey + GROUP_SEPARATOR+ configName;
+                registerToBeanContainer(config.getPrimary(), subKey, key,configMap.get(subKey));
+            }
+        }
     }
 
     private void registerToBeanContainer(String s, Object o) {
         String[] keyArr = s.split(GROUP_SEPARATOR);
         MultiBaseConfig config = groupMap.get(keyArr[0]);
-        registerToBeanContainer(config.getPrimary(),keyArr[1],s,o);
+        List<Class<?>> allSuperClass = getAllSuperClass(o.getClass());
+        for (Class<?> superClass : allSuperClass) {
+            //config#iis#className#MultiService.name
+            String key = keyArr[1] + GROUP_SEPARATOR+ superClass.getName();
+            if(keyArr.length == 4){
+                //有分组
+                key = key+ GROUP_SEPARATOR+keyArr[3];
+            }
+            registerToBeanContainer(config.getPrimary(), keyArr[1], key, o);
+        }
     }
 
 
@@ -121,14 +137,19 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
             for (String group : configMap.keySet()) {
                 for (Class<?> clazz : map.get(key)) {
                     MultiService annotation = clazz.getAnnotation(MultiService.class);
+                    //groupKey = config#iis#className#MultiService.name
+                    String groupKey = key+ GROUP_SEPARATOR+group + GROUP_SEPARATOR + clazz.getName();
+                    if (!ValidationUtil.isEmpty(annotation.name())) {
+                        groupKey = groupKey + GROUP_SEPARATOR + annotation.name();
+                    }
                     if(!ValidationUtil.isEmpty(annotation.group())){
                         if(contains(annotation.group(),group)){
                             Object o = ClassUtil.newInstance(clazz, true);
-                            GROUP_BEAN_MAP.put(key+ GROUP_SEPARATOR +group+ GROUP_SEPARATOR +clazz.getName(),o);
+                            GROUP_BEAN_MAP.put(groupKey,o);
                         }
                     }else{
                         Object o = ClassUtil.newInstance(clazz, true);
-                        GROUP_BEAN_MAP.put(key + GROUP_SEPARATOR +group+ GROUP_SEPARATOR + clazz.getName(), o);
+                        GROUP_BEAN_MAP.put(groupKey, o);
                     }
                 }
             }
@@ -250,39 +271,50 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
      * 递归获取同一配置的所有class类，并添加到对应的map中
      */
     private Map<String, List<Class<?>>> getAllClassByMultiConfig(Map<String, List<Class<?>>> multiServiceMap) {
+        List<Class<?>> tempList = new ArrayList<>();
+        Set<Class<?>> classSet = beanMap.keySet();
         for (String key : groupMap.keySet()) {
-            GROUP_FLAG = true;
             List<Class<?>> list = new ArrayList<>();
-            for (Class<?> clazz : beanMap.keySet()) {
-                getAllClassAddOneGroup(key, clazz, list);
+            for (Class<?> clazz : classSet) {
+                boolean addFlag = getAllClassAddOneGroup(key, clazz, list);
+                if (!list.contains(clazz) && addFlag) {
+                    list.add(clazz);
+                }
             }
             if (multiServiceMap.get(key) != null) {
                 multiServiceMap.get(key).addAll(list);
             }else{
                 multiServiceMap.put(key, list);
             }
+            //过滤已经处理的class
+            tempList.addAll(list);
+            classSet = new HashSet<>();
+            for (Class<?> c : beanMap.keySet()) {
+                if(!tempList.contains(c)){
+                    classSet.add(c);
+                }
+            }
         }
         return multiServiceMap;
     }
 
-    private synchronized void getAllClassAddOneGroup(String key,Class<?> clazz, List<Class<?>> list) {
+    private  boolean getAllClassAddOneGroup(String key,Class<?> clazz, List<Class<?>> list) {
         //2.遍历clazz所有的成员变量
         Field[] fields = clazz.getDeclaredFields();
         if (ValidationUtil.isEmpty(fields)) {
-            return;
+            return false;
         }
         boolean flag = false;
         for (Field field : fields) {
+            if(list.contains(field.getType()) && field.isAnnotationPresent(MultiService.class)){
+                return true;
+            }
             if (BaseConfig.class.isAssignableFrom(field.getType())
                     && !key.equals(field.getType().getName())){
-                GROUP_FLAG = false;
-                return;
-            }else if (key.equals(field.getType().getName())) {
-                //如果key的名称和变量名称相同，则说明是同一个分组，则添加到list中
-                if (!list.contains(clazz)) {
-                    list.add(clazz);
-                    flag = true;
-                }
+                return false;
+            }
+            if (key.equals(field.getType().getName())) {
+                flag = true;
             } else if (BaseConfig.class.isAssignableFrom(field.getType()) && flag) {
                 throw new IllegalArgumentException("duplicate config file "+ key +" and "+field.getType().getName()+ " in "+ clazz.getName());
             } else if (field.isAnnotationPresent(MultiService.class)) {
@@ -291,15 +323,16 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
                 //4.获取成员变量的类型
                 Class<?> fieldClass = field.getType();
                 Object fieldInstance = getFieldInstance(fieldClass, multiService.name());
-                if (fieldInstance != null) {
-                    getAllClassAddOneGroup(key, fieldInstance.getClass(), list);
-                    if (!list.contains(clazz) && GROUP_FLAG) {
-                        list.add(clazz);
-                    }
+                if(fieldInstance != null){
+                   if(list.contains(fieldInstance.getClass())){
+                       return true;
+                   }else{
+                       return getAllClassAddOneGroup(key, fieldInstance.getClass(), list);
+                   }
                 }
             }
         }
-        return;
+        return flag;
     }
 
     /**
@@ -370,6 +403,36 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
             }
         }
         return classSet.size() > 0 ? classSet : null;
+    }
+
+    /**
+     * 根据类获取其父类及接口
+     * @param clazz
+     * @return
+     */
+    private static List<Class<?>> getAllSuperClass(Class<?> clazz) {
+        List<Class<?>> list = new ArrayList<>();
+        Class<?> temp = clazz;
+        while (temp != null && temp != Object.class) {
+            list.addAll(new ArrayList<>(Arrays.asList(temp)));
+            temp = temp.getSuperclass();
+        }
+        getAllInterfaces(clazz.getInterfaces(), list);
+        return list;
+    }
+
+    private static void getAllInterfaces(Class<?>[] interfaces, List<Class<?>> list) {
+        //获取所有接口
+        while (interfaces.length > 0) {
+            for (Class<?> anInterface : interfaces) {
+                if (!list.contains(anInterface)) {
+                    list.add(anInterface);
+                }
+                interfaces = anInterface.getInterfaces();
+                getAllInterfaces(interfaces, list);
+
+            }
+        }
     }
 
 

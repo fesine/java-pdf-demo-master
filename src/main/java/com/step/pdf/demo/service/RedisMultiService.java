@@ -8,7 +8,7 @@ package com.step.pdf.demo.service;
  * @author: fesine
  * @updateTime:2021/9/18
  */
-public interface CombineMultiService {
+public interface RedisMultiService {
 
-    String handler(String msg);
+    void redis();
 }

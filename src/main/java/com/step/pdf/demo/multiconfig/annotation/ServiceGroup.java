@@ -10,7 +10,7 @@ import java.lang.annotation.*;
  * @author: fesine
  * @updateTime:2021/9/17
  */
-@Target({ElementType.TYPE, ElementType.FIELD})
+@Target({ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 @Documented
 @Inherited

@@ -8,7 +8,7 @@ package com.step.pdf.demo.service;
  * @author: fesine
  * @updateTime:2021/9/18
  */
-public interface MyMultiService {
+public interface EsMultiService {
 
-    void sayHello();
+    void es();
 }
