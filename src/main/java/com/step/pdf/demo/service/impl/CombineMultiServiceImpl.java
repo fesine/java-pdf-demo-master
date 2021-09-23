@@ -18,15 +18,15 @@ import javax.annotation.Resource;
 @MultiService
 public class CombineMultiServiceImpl implements CombineMultiService {
 
-    @MultiService
-    private RedisMultiService testService;
+    @MultiService(name = "redis")
+    private RedisMultiService redisMultiService;
 
     @Resource
     private NormalService normalService;
 
     @Override
     public String handler(String msg) {
-        testService.redis();
+        redisMultiService.redis();
         normalService.normal();
         return "combine handle :"+msg;
     }

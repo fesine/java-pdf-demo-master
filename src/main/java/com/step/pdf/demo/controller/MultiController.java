@@ -29,7 +29,6 @@ public class MultiController {
     private ConsumerService consumerRedisService;
 
     @MultiService
-    @Resource
     private CombineMultiService combineMultiService;
 
     @GetMapping("/es/{msg}")

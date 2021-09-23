@@ -12,7 +12,7 @@ import com.step.pdf.demo.service.RedisMultiService;
  * @author: fesine
  * @updateTime:2021/9/19
  */
-@MultiService
+@MultiService(name = "redis")
 public class RedisMultiServiceImpl implements RedisMultiService {
 
 

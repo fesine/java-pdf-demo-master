@@ -7,8 +7,7 @@ import java.io.FileFilter;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.net.URL;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 
 /**
  * @description: 类描述
@@ -156,6 +155,37 @@ public class ClassUtil {
         } catch (IllegalAccessException e) {
             log.error("set field value failed.", e);
             throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * 根据类获取其父类及接口
+     *
+     * @param clazz
+     * @return
+     */
+    public static List<Class<?>> getAllSuperClass(Class<?> clazz) {
+        List<Class<?>> list = new ArrayList<>();
+        Class<?> temp = clazz;
+        while (temp != null && temp != Object.class) {
+            list.addAll(new ArrayList<>(Arrays.asList(temp)));
+            temp = temp.getSuperclass();
+        }
+        getAllInterfaces(clazz.getInterfaces(), list);
+        return list;
+    }
+
+    public static void getAllInterfaces(Class<?>[] interfaces, List<Class<?>> list) {
+        //获取所有接口
+        while (interfaces.length > 0) {
+            for (Class<?> anInterface : interfaces) {
+                if (!list.contains(anInterface)) {
+                    list.add(anInterface);
+                }
+                interfaces = anInterface.getInterfaces();
+                getAllInterfaces(interfaces, list);
+
+            }
         }
     }
 }

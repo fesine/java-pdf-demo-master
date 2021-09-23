@@ -16,5 +16,9 @@ import java.lang.annotation.*;
 @Inherited
 public @interface ServiceGroup {
 
+    /**
+     * 用于指定引用组名称
+     * @return
+     */
     String value();
 }
