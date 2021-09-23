@@ -18,6 +18,7 @@ import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.Map;
 
+import static com.step.pdf.demo.multiconfig.constant.Constants.AOP_CGLIB_TARGET_FIELD;
 import static com.step.pdf.demo.multiconfig.constant.Constants.GROUP_SEPARATOR;
 
 /**
@@ -36,7 +37,7 @@ public class MultiBeanPostProcessor implements BeanPostProcessor, ApplicationCon
 
     private String[] scanPackage;
 
-    private final static String AOP_CGLIB_TARGET_FIELD = "CGLIB$CALLBACK_0";
+
 
     @Override
     public Object postProcessAfterInitialization(Object bean, String beanName) throws BeansException {

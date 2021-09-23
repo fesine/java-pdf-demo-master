@@ -15,4 +15,6 @@ public class Constants {
 
     public static final String GROUP_SEPARATOR = "#";
 
+    public final static String AOP_CGLIB_TARGET_FIELD = "CGLIB$CALLBACK_0";
+
 }

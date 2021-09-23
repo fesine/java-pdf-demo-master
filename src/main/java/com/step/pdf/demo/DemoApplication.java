@@ -7,7 +7,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-@EnableMultiConfig(basePackages = {"com.step.pdf.demo"}, configs = {EsMultiConfig.class,
+@EnableMultiConfig(basePackages = {"com.step.pdf.demo.controller", "com.step.pdf.demo.service"}, configs = {EsMultiConfig.class,
         RedisMultiConfig.class})
 public class DemoApplication {
 

@@ -21,6 +21,8 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.step.pdf.demo.multiconfig.constant.Constants.GROUP_SEPARATOR;
+
 /**
  * @description: 类描述
  * @author: fesine
@@ -129,7 +131,7 @@ public class MultiConfigRegister implements ImportBeanDefinitionRegistrar, Envir
             if (entry.getKey().equals(baseConfig.getPrimary())) {
                 beanDefinitionBuilder.setPrimary(true);
             }
-            registry.registerBeanDefinition(entry.getKey()+ "#" + configClass.getName(),
+            registry.registerBeanDefinition(entry.getKey()+ GROUP_SEPARATOR + configClass.getName(),
                     beanDefinitionBuilder.getRawBeanDefinition());
             log.info(">>>>>>>>>>>>>>>>>register multiConfig {}.",
                     entry.getKey() + "#" + configClass.getName());
