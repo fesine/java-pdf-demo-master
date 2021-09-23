@@ -21,6 +21,6 @@ public class RedisMultiServiceImpl implements RedisMultiService {
 
     @Override
     public void redis() {
-        System.out.println("------>" + redisConfig.toString());;
+        System.out.println("------>" + redisConfig.toString());
     }
 }

@@ -16,7 +16,7 @@ import java.lang.annotation.*;
 public @interface MultiService {
 
     /**
-     * 对于同一接口，多种实现，可以通过value来指定名称
+     * 对于同一接口，多种实现，可以通过name来指定名称
      * @return
      */
     String name() default "";

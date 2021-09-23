@@ -65,7 +65,8 @@ public class DemoController {
         datas.put("title", title);
 
         // 1、生成option字符串
-        String option = FreemarkerUtil.generateStringInClassLoader(pdfConfig.getTemplateDir(), "option.ftl", datas);
+        String option = FreemarkerUtil.generateStringInClassLoader(pdfConfig.getTemplateDir(),
+                "option.ftl", datas);
         // 2、生成图片码
         String base64 = EchartsUtil.generateEchartsBase64(URL,option);
         Map<String, Object> variables = new HashMap<>();

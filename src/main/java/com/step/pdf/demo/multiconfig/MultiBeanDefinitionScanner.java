@@ -3,24 +3,27 @@ package com.step.pdf.demo.multiconfig;
 import com.step.pdf.demo.multiconfig.annotation.MultiService;
 import com.step.pdf.demo.multiconfig.util.ClassUtil;
 import com.step.pdf.demo.multiconfig.util.ValidationUtil;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.AnnotatedBeanDefinition;
 import org.springframework.beans.factory.config.BeanDefinitionHolder;
 import org.springframework.beans.factory.support.BeanDefinitionBuilder;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
-import org.springframework.context.annotation.ClassPathBeanDefinitionScanner;
+import org.springframework.beans.factory.support.GenericBeanDefinition;
+import org.springframework.context.annotation.*;
 import org.springframework.core.annotation.AnnotationAttributes;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.core.type.classreading.MetadataReader;
+import org.springframework.core.type.filter.AnnotationTypeFilter;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-import static com.step.pdf.demo.multiconfig.constant.Constants.*;
+import static com.step.pdf.demo.multiconfig.constant.Constants.DEFAULT_RESOURCE_PATTERN;
+import static com.step.pdf.demo.multiconfig.constant.Constants.GROUP_SEPARATOR;
 
 /**
  * @description: 类描述
@@ -42,18 +45,26 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
 
     private Map<String, Object> GROUP_BEAN_MAP = new ConcurrentHashMap<>();
 
+    private Map<String, Resource> RESOURCE_MAP = new ConcurrentHashMap<>();
+
+    private ScopeMetadataResolver scopeMetadataResolver = new AnnotationScopeMetadataResolver();
+
     /**
      * 1、存放所有被配置标记的目标对象的Map
      */
     private final Map<Class<?>, Object> beanMap = new ConcurrentHashMap<>();
 
+    private final Map<Class<?>, List<BeanDefinitionHolder>> BEAN_HOLDER = new ConcurrentHashMap<>();
 
-    public MultiBeanDefinitionScanner(BeanDefinitionRegistry registry, boolean useDefaultFilters, Map<String, MultiBaseConfig> groupMap) {
+
+    public MultiBeanDefinitionScanner(BeanDefinitionRegistry registry, boolean useDefaultFilters,
+                                      Map<String, MultiBaseConfig> groupMap) {
         super(registry, useDefaultFilters);
         this.groupMap = groupMap;
         this.registry = registry;
     }
 
+    @SneakyThrows
     @Override
     protected Set<BeanDefinitionHolder> doScan(String... basePackages) {
         try {
@@ -66,17 +77,20 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
                 return null;
             }
             //2. 将分组bean，按config#group#beanName组成key，添加到全局GROUP_BEAN_MAP中
-            doAddBeanMap(map);
-            //遍历GROUP_BEAN_MAP进行依赖注入
-            doIocGroupBean();
-            //遍历GROUP_BEAN_MAP注册bean
-            doRegisterBean();
+            //doAddBeanMap(map);
+            ////遍历GROUP_BEAN_MAP进行依赖注入
+            //doIocGroupBean();
+            ////遍历GROUP_BEAN_MAP注册bean
+            //doRegisterBean();
+            //Set<BeanDefinitionHolder> set = super.doScan(basePackages);
+            Set<BeanDefinitionHolder> holders  = doAddBeanHolderSet(map);
+            return holders;
         } catch (Exception e) {
-            log.error("register multi service failed.{}.",e.getMessage());
+            log.error("register multi service failed.{}.", e.getMessage());
             throw new RuntimeException(e.getMessage());
         }
-        return null;
     }
+
 
     /**
      * 注册bean
@@ -92,8 +106,8 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
             MultiBaseConfig config = groupMap.get(configName);
             Map<String, Object> configMap = config.getConfigMap();
             for (String subKey : configMap.keySet()) {
-                String key = subKey + GROUP_SEPARATOR+ configName;
-                registerToBeanContainer(config.getPrimary(), subKey, key,configMap.get(subKey));
+                String key = subKey + GROUP_SEPARATOR + configName;
+                registerToBeanContainer(config.getPrimary(), subKey, key, configMap.get(subKey));
             }
         }
     }
@@ -104,20 +118,22 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
         List<Class<?>> allSuperClass = getAllSuperClass(o.getClass());
         for (Class<?> superClass : allSuperClass) {
             //config#iis#className#MultiService.name
-            String key = keyArr[1] + GROUP_SEPARATOR+ superClass.getName();
-            if(keyArr.length == 4){
+            String key = keyArr[1] + GROUP_SEPARATOR + superClass.getName();
+            if (keyArr.length == 4) {
                 //有分组
-                key = key+ GROUP_SEPARATOR+keyArr[3];
+                key = key + GROUP_SEPARATOR + keyArr[3];
             }
             registerToBeanContainer(config.getPrimary(), keyArr[1], key, o);
         }
     }
 
 
-    private void registerToBeanContainer(String primary, String group,String key,
+    private void registerToBeanContainer(String primary, String group, String key,
                                          Object object) {
         BeanDefinitionBuilder builder = BeanDefinitionBuilder
                 .genericBeanDefinition(Object.class, () -> object);
+        GenericBeanDefinition beanDefinition = new GenericBeanDefinition();
+        beanDefinition.setBeanClass(object.getClass());
         if (group.equals(primary)) {
             builder.setPrimary(true);
         }
@@ -127,6 +143,7 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
 
     /**
      * 初始化分组bean
+     *
      * @param map
      */
     private void doAddBeanMap(Map<String, List<Class<?>>> map) {
@@ -138,22 +155,86 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
                 for (Class<?> clazz : map.get(key)) {
                     MultiService annotation = clazz.getAnnotation(MultiService.class);
                     //groupKey = config#iis#className#MultiService.name
-                    String groupKey = key+ GROUP_SEPARATOR+group + GROUP_SEPARATOR + clazz.getName();
+                    String groupKey =
+                            key + GROUP_SEPARATOR + group + GROUP_SEPARATOR + clazz.getName();
                     if (!ValidationUtil.isEmpty(annotation.name())) {
                         groupKey = groupKey + GROUP_SEPARATOR + annotation.name();
                     }
-                    if(!ValidationUtil.isEmpty(annotation.group())){
-                        if(contains(annotation.group(),group)){
+                    if (!ValidationUtil.isEmpty(annotation.group())) {
+                        if (contains(annotation.group(), group)) {
                             Object o = ClassUtil.newInstance(clazz, true);
-                            GROUP_BEAN_MAP.put(groupKey,o);
+                            GROUP_BEAN_MAP.put(groupKey, o);
                         }
-                    }else{
+                    } else {
                         Object o = ClassUtil.newInstance(clazz, true);
                         GROUP_BEAN_MAP.put(groupKey, o);
                     }
                 }
             }
         }
+    }
+
+    private Set<BeanDefinitionHolder> doAddBeanHolderSet(Map<String, List<Class<?>>> map) {
+        Set<BeanDefinitionHolder> beanDefinitionHolderSet = new LinkedHashSet<>();
+        for (String key : map.keySet()) {
+            MultiBaseConfig config = groupMap.get(key);
+            Map<String, BaseConfig> configMap = config.getConfigMap();
+            //遍历group组
+            for (String group : configMap.keySet()) {
+                for (Class<?> clazz : map.get(key)) {
+                    MultiService annotation = clazz.getAnnotation(MultiService.class);
+                    //groupKey = config#iis#className#MultiService.name
+                    //String groupKey =
+                    //        key + GROUP_SEPARATOR + group + GROUP_SEPARATOR + clazz.getName();
+                    String beanName = group + GROUP_SEPARATOR + clazz.getName();
+                    if (!ValidationUtil.isEmpty(annotation.name())) {
+                        //groupKey = groupKey + GROUP_SEPARATOR + annotation.name();
+                        beanName = beanName + GROUP_SEPARATOR + annotation.name();
+                    }
+                    boolean addFlag = false;
+                    if (!ValidationUtil.isEmpty(annotation.group())) {
+                        if (contains(annotation.group(), group)) {
+                            //Object o = ClassUtil.newInstance(clazz, true);
+                            //GROUP_BEAN_MAP.put(groupKey, o);
+                            addFlag = true;
+                        }
+                    } else {
+                        //Object o = ClassUtil.newInstance(clazz, true);
+                        //GROUP_BEAN_MAP.put(groupKey, o);
+                        addFlag = true;
+                    }
+                    if (addFlag) {
+                        Resource resource = RESOURCE_MAP.get(clazz.getName());
+                        try {
+                            MetadataReader metadataReader =
+                                    getMetadataReaderFactory().getMetadataReader(resource);
+                            ScannedGenericBeanDefinition candidate =
+                                    new ScannedGenericBeanDefinition(metadataReader);
+                            candidate.setResource(resource);
+                            candidate.setSource(resource);
+                            if (group.equals(config.getPrimary())) {
+                                candidate.setPrimary(true);
+                            }
+                            ScopeMetadata scopeMetadata =
+                                    this.scopeMetadataResolver.resolveScopeMetadata(candidate);
+                            candidate.setScope(scopeMetadata.getScopeName());
+                            postProcessBeanDefinition(candidate,beanName);
+                            AnnotationConfigUtils.processCommonDefinitionAnnotations(candidate);
+                            if (checkCandidate(beanName, candidate)) {
+                                BeanDefinitionHolder definitionHolder = new BeanDefinitionHolder(candidate, beanName);
+                                beanDefinitionHolderSet.add(definitionHolder);
+                                registerBeanDefinition(definitionHolder, this.registry);
+                            }
+                        } catch (IOException e) {
+                            log.warn("error get metadataReader for class {}",clazz.getName());
+                        }
+                    }
+
+                }
+            }
+
+        }
+        return beanDefinitionHolderSet;
     }
 
     private boolean contains(String[] groupArr, String group) {
@@ -190,7 +271,7 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
                     //4.获取成员变量的类型
                     Class<?> fieldClass = field.getType();
                     //5.获取这些成员变量的类型在容器中的实例
-                    Object fieldValue = getFieldInstance(key,fieldClass, multiService.name());
+                    Object fieldValue = getFieldInstance(key, fieldClass, multiService.name());
                     if (fieldValue == null) {
                         throw new RuntimeException("unable to inject relevant type, target " +
                                 "fieldClass is:" + fieldClass.getName());
@@ -205,21 +286,21 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
     }
 
     private Object getFieldInstance(String key, Class<?> fieldClass, String name) {
-        if(BaseConfig.class.isAssignableFrom(fieldClass)){
+        if (BaseConfig.class.isAssignableFrom(fieldClass)) {
             //是配置文件，则获取对应的配置文件
             String[] keyArr = key.split(GROUP_SEPARATOR);
             MultiBaseConfig multiBaseConfig = groupMap.get(keyArr[0]);
             return multiBaseConfig.getConfigMap().get(keyArr[1]);
         }
-        String prefix = key.substring(0, key.lastIndexOf(GROUP_SEPARATOR)+1);
-        Object fieldValue = GROUP_BEAN_MAP.get(prefix+fieldClass.getName());
+        String prefix = key.substring(0, key.lastIndexOf(GROUP_SEPARATOR) + 1);
+        Object fieldValue = GROUP_BEAN_MAP.get(prefix + fieldClass.getName());
         //如果存在实例，直接返回
         if (fieldValue != null) {
             return fieldValue;
         } else {
             Class<?> implementClass = getImplementedClass(fieldClass, name);
             if (implementClass != null) {
-                return GROUP_BEAN_MAP.get(prefix+implementClass.getName());
+                return GROUP_BEAN_MAP.get(prefix + implementClass.getName());
             } else {
                 return null;
             }
@@ -228,6 +309,7 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
 
     /**
      * 扫描包，加载到bean到allClassByMultiConfigMap
+     *
      * @param basePackages
      * @throws Exception
      */
@@ -262,6 +344,7 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
                     Class<?> c = Class.forName(className);
                     Object o = ClassUtil.newInstance(c, true);
                     beanMap.put(c, o);
+                    RESOURCE_MAP.put(className, resource);
                 }
             }
         }
@@ -283,14 +366,14 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
             }
             if (multiServiceMap.get(key) != null) {
                 multiServiceMap.get(key).addAll(list);
-            }else{
+            } else {
                 multiServiceMap.put(key, list);
             }
             //过滤已经处理的class
             tempList.addAll(list);
             classSet = new HashSet<>();
             for (Class<?> c : beanMap.keySet()) {
-                if(!tempList.contains(c)){
+                if (!tempList.contains(c)) {
                     classSet.add(c);
                 }
             }
@@ -298,7 +381,7 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
         return multiServiceMap;
     }
 
-    private  boolean getAllClassAddOneGroup(String key,Class<?> clazz, List<Class<?>> list) {
+    private boolean getAllClassAddOneGroup(String key, Class<?> clazz, List<Class<?>> list) {
         //2.遍历clazz所有的成员变量
         Field[] fields = clazz.getDeclaredFields();
         if (ValidationUtil.isEmpty(fields)) {
@@ -306,29 +389,29 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
         }
         boolean flag = false;
         for (Field field : fields) {
-            if(list.contains(field.getType()) && field.isAnnotationPresent(MultiService.class)){
+            if (list.contains(field.getType()) && field.isAnnotationPresent(MultiService.class)) {
                 return true;
             }
             if (BaseConfig.class.isAssignableFrom(field.getType())
-                    && !key.equals(field.getType().getName())){
+                    && !key.equals(field.getType().getName())) {
                 return false;
             }
             if (key.equals(field.getType().getName())) {
                 flag = true;
             } else if (BaseConfig.class.isAssignableFrom(field.getType()) && flag) {
-                throw new IllegalArgumentException("duplicate config file "+ key +" and "+field.getType().getName()+ " in "+ clazz.getName());
+                throw new IllegalArgumentException("duplicate config file " + key + " and " + field.getType().getName() + " in " + clazz.getName());
             } else if (field.isAnnotationPresent(MultiService.class)) {
                 //如果变量中包含MultiService注解，继续查找递归
                 MultiService multiService = field.getAnnotation(MultiService.class);
                 //4.获取成员变量的类型
                 Class<?> fieldClass = field.getType();
                 Object fieldInstance = getFieldInstance(fieldClass, multiService.name());
-                if(fieldInstance != null){
-                   if(list.contains(fieldInstance.getClass())){
-                       return true;
-                   }else{
-                       return getAllClassAddOneGroup(key, fieldInstance.getClass(), list);
-                   }
+                if (fieldInstance != null) {
+                    if (list.contains(fieldInstance.getClass())) {
+                        return true;
+                    } else {
+                        return getAllClassAddOneGroup(key, fieldInstance.getClass(), list);
+                    }
                 }
             }
         }
@@ -341,7 +424,7 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
      * @param fieldClass
      * @return
      */
-    private Object getFieldInstance(Class<?> fieldClass,String annotationValue) {
+    private Object getFieldInstance(Class<?> fieldClass, String annotationValue) {
         Object fieldValue = beanMap.get(fieldClass);
         //如果存在实例，直接返回
         if (fieldValue != null) {
@@ -356,7 +439,7 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
         }
     }
 
-    private Class<?> getImplementedClass(Class<?> fieldClass,String annotationValue) {
+    private Class<?> getImplementedClass(Class<?> fieldClass, String annotationValue) {
         //如果不存在，则通过父类或接口查询实例对象
         Set<Class<?>> classSet = getClassesBySuper(fieldClass);
         if (!ValidationUtil.isEmpty(classSet)) {
@@ -407,6 +490,7 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
 
     /**
      * 根据类获取其父类及接口
+     *
      * @param clazz
      * @return
      */
@@ -436,15 +520,6 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
     }
 
 
-
-
-
-
-    @Override
-    protected boolean isCandidateComponent(AnnotatedBeanDefinition beanDefinition) {
-        return beanDefinition.getMetadata().isInterface() && beanDefinition.getMetadata().isIndependent();
-    }
-
     private ResourcePatternResolver getResourcePatternResolver() {
         if (this.resourcePatternResolver == null) {
             this.resourcePatternResolver = new PathMatchingResourcePatternResolver();
@@ -453,4 +528,8 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
     }
 
 
+    public void registerFilters() {
+        this.addIncludeFilter(new AnnotationTypeFilter(MultiService.class));
+        //this.addIncludeFilter(new AnnotationTypeFilter(MultiConfig.class));
+    }
 }

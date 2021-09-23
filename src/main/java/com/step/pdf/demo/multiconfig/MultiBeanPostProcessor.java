@@ -8,11 +8,14 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.aop.framework.AdvisedSupport;
 import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
+import javax.annotation.Resource;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 
@@ -56,26 +59,26 @@ public class MultiBeanPostProcessor implements BeanPostProcessor, ApplicationCon
                     setBeanFieldValue(target, field, serviceGroup.value(),s.name());
                     continue;
                 }
-                ////1.4 获取Resource和Autowired注解
-                //Resource r = field.getAnnotation(Resource.class);
-                //Autowired a = field.getAnnotation(Autowired.class);
-                //if (r != null || a != null) {
-                //    setBeanFieldValue(target, field, serviceGroup.value());
-                //}
+                //1.4 获取Resource和Autowired注解
+                Resource r = field.getAnnotation(Resource.class);
+                Autowired a = field.getAnnotation(Autowired.class);
+                if (r != null || a != null) {
+                    setBeanFieldValue(target, field, serviceGroup.value(),null);
+                }
             }
-        //}else if(scanPackage != null && scanPackage.length != 0){
-        //    for (String sp : scanPackage) {
-        //        if (StringUtils.isEmpty(sp)) {
-        //            continue;
-        //        }
-        //        //在此包中
-        //        if (target.getClass().getName().startsWith(sp+".")) {
-        //            setBeanFieldValue(target);
-        //        }
-        //    }
-        //}else{
-        //    //3、没有配置scanPackage，全部扫描处理，建议配置scanPackage
-        //    setBeanFieldValue(target);
+        }else if(scanPackage != null && scanPackage.length != 0){
+            for (String sp : scanPackage) {
+                if (StringUtils.isEmpty(sp)) {
+                    continue;
+                }
+                //在此包中
+                if (target.getClass().getName().startsWith(sp+".")) {
+                    setBeanFieldValue(target);
+                }
+            }
+        }else{
+            //3、没有配置scanPackage，全部扫描处理，建议配置scanPackage
+            setBeanFieldValue(target);
         }
         return bean;
     }
@@ -100,19 +103,19 @@ public class MultiBeanPostProcessor implements BeanPostProcessor, ApplicationCon
         return bean;
     }
 
-    //private void setBeanFieldValue(Object bean) {
-    //    //2 类上面没有ServiceGroup注解
-    //    //2.1、获取所有包含注解的属性
-    //    Field[] fields = bean.getClass().getDeclaredFields();
-    //    for (Field field : fields) {
-    //        //2.2 获取ServiceGroup注解
-    //        ServiceGroup s = field.getAnnotation(ServiceGroup.class);
-    //        if (s != null) {
-    //            //2.3 重新注入
-    //            setBeanFieldValue(bean, field, s.value());
-    //        }
-    //    }
-    //}
+    private void setBeanFieldValue(Object bean) {
+        //2 类上面没有ServiceGroup注解
+        //2.1、获取所有包含注解的属性
+        Field[] fields = bean.getClass().getDeclaredFields();
+        for (Field field : fields) {
+            //2.2 获取ServiceGroup注解
+            ServiceGroup s = field.getAnnotation(ServiceGroup.class);
+            if (s != null) {
+                //2.3 重新注入
+                setBeanFieldValue(bean, field, s.value(),null);
+            }
+        }
+    }
 
     /**
      * 重新设值

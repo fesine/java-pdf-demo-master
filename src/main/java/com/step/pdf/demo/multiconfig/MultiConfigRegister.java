@@ -9,13 +9,17 @@ import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.boot.context.properties.bind.BindResult;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.EnvironmentAware;
+import org.springframework.context.ResourceLoaderAware;
 import org.springframework.context.annotation.ImportBeanDefinitionRegistrar;
 import org.springframework.core.annotation.AnnotationAttributes;
 import org.springframework.core.env.Environment;
+import org.springframework.core.io.ResourceLoader;
 import org.springframework.core.type.AnnotationMetadata;
 import org.springframework.util.StringUtils;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @description: 类描述
@@ -26,11 +30,12 @@ import java.util.*;
  * @updateTime:2021/9/17
  */
 @Slf4j
-public class MultiConfigRegister implements ImportBeanDefinitionRegistrar, EnvironmentAware
-        {
+public class MultiConfigRegister implements ImportBeanDefinitionRegistrar, EnvironmentAware,
+        ResourceLoaderAware {
 
     private Environment environment;
 
+    private ResourceLoader resourceLoader;
 
 
     @Override
@@ -51,7 +56,8 @@ public class MultiConfigRegister implements ImportBeanDefinitionRegistrar, Envir
                     BeanDefinitionBuilder.genericBeanDefinition(String[].class, () -> basePackages);
             registry.registerBeanDefinition(enableMultiConfigName,
                     scanPackageBuilder.getRawBeanDefinition());
-            log.info(">>>>>>>>>>>>>>>>>register enableMultiConfigName {} with {}.", enableMultiConfigName,Arrays.toString(basePackages));
+            log.info(">>>>>>>>>>>>>>>>>register enableMultiConfigName {} with {}.",
+                    enableMultiConfigName, Arrays.toString(basePackages));
             //注册multiConfig中的config类
             // 1. 获取标记注解配置类
             Class<? extends MultiBaseConfig>[] baseConfigClasses =
@@ -71,14 +77,16 @@ public class MultiConfigRegister implements ImportBeanDefinitionRegistrar, Envir
                 if (!bindResult.isBound()) {
                     log.error(">>>>>>>>>>>>>>>>{} not set properties value,please check.",
                             baseConfigClass.getSimpleName());
-                    throw new BeanCreationException(baseConfigClass.getName() + " not set properties " +
+                    throw new BeanCreationException(baseConfigClass.getName() + " not set " +
+                            "properties " +
                             "value, please check.");
                 }
                 MultiBaseConfig baseConfig = (MultiBaseConfig) bindResult.get();
                 groupMap.put(baseConfig.getConfigMap().values().iterator().next().getClass().getName(), baseConfig);
                 //4. 判断主配置的值
                 if (StringUtils.isEmpty(baseConfig.getPrimary())) {
-                    throw new BeanCreationException(baseConfigClass.getName() + " not set primary " +
+                    throw new BeanCreationException(baseConfigClass.getName() + " not set primary" +
+                            " " +
                             "value, please check.");
                 } else {
                     //5. 遍历map
@@ -88,35 +96,43 @@ public class MultiConfigRegister implements ImportBeanDefinitionRegistrar, Envir
                                 "configMap value, please check.");
                     }
 
-                    //registerConfigMap(registry, baseConfig, configMap);
+                    registerConfigMap(registry, baseConfig, configMap);
                 }
             }
 
-            MultiBeanDefinitionScanner scanner = new MultiBeanDefinitionScanner(registry, false, groupMap);
-            scanner.doScan(basePackages);
+            MultiBeanDefinitionScanner scanner = new MultiBeanDefinitionScanner(registry, false,
+                    groupMap);
+            if (resourceLoader != null) {
+                scanner.setResourceLoader(resourceLoader);
+            }
+            scanner.registerFilters();
+            scanner.scan(basePackages);
         }
 
     }
 
     /**
      * 注册配置文件bean
+     *
      * @param registry
      * @param baseConfig
      * @param configMap
      */
-    public void registerConfigMap(BeanDefinitionRegistry registry, MultiBaseConfig baseConfig, Map<String, Object> configMap) {
+    public void registerConfigMap(BeanDefinitionRegistry registry, MultiBaseConfig baseConfig,
+                                  Map<String, Object> configMap) {
         for (Map.Entry<String, Object> entry : configMap.entrySet()) {
             Object value = entry.getValue();
-            Class<? extends MultiBaseConfig> configClass = (Class<? extends MultiBaseConfig>) value.getClass();
+            Class<? extends MultiBaseConfig> configClass =
+                    (Class<? extends MultiBaseConfig>) value.getClass();
             BeanDefinitionBuilder beanDefinitionBuilder = BeanDefinitionBuilder
                     .genericBeanDefinition(Object.class, () -> value);
             if (entry.getKey().equals(baseConfig.getPrimary())) {
                 beanDefinitionBuilder.setPrimary(true);
             }
-            registry.registerBeanDefinition(entry.getKey() + configClass.getName(),
+            registry.registerBeanDefinition(entry.getKey()+ "#" + configClass.getName(),
                     beanDefinitionBuilder.getRawBeanDefinition());
             log.info(">>>>>>>>>>>>>>>>>register multiConfig {}.",
-                    entry.getKey() + configClass.getName());
+                    entry.getKey() + "#" + configClass.getName());
         }
         //6. 注册配置文件的key group，便于在后期对使用MultiService注解的服务注册多group服务
         BeanDefinitionBuilder groupBuilder = BeanDefinitionBuilder
@@ -130,4 +146,8 @@ public class MultiConfigRegister implements ImportBeanDefinitionRegistrar, Envir
         this.environment = environment;
     }
 
+    @Override
+    public void setResourceLoader(ResourceLoader resourceLoader) {
+        this.resourceLoader = resourceLoader;
+    }
 }
