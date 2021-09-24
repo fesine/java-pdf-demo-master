@@ -17,4 +17,8 @@ public class Constants {
 
     public final static String AOP_CGLIB_TARGET_FIELD = "CGLIB$CALLBACK_0";
 
+    public static final String FILE_PROTOCOL = "file";
+
+    public static final String CLASS_FILE = ".class";
+
 }

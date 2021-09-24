@@ -1,6 +1,7 @@
 package com.step.pdf.demo.multiconfig.annotation;
 
 import com.step.pdf.demo.multiconfig.MultiBaseConfig;
+import com.step.pdf.demo.multiconfig.MultiBeanPostProcessor;
 import com.step.pdf.demo.multiconfig.MultiConfigRegister;
 import org.springframework.context.annotation.Import;
 
@@ -20,7 +21,7 @@ import java.lang.annotation.Target;
 
 @Target({ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
-@Import(MultiConfigRegister.class)
+@Import({MultiConfigRegister.class, MultiBeanPostProcessor.class})
 public @interface EnableMultiConfig {
     /**
      * 扫描包路径

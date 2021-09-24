@@ -11,7 +11,6 @@ import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
-import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 import java.lang.reflect.Field;
@@ -29,7 +28,6 @@ import static com.step.pdf.demo.multiconfig.constant.Constants.GROUP_SEPARATOR;
  * @author: fesine
  * @updateTime:2021/9/2
  */
-@Component
 @Slf4j
 public class MultiBeanPostProcessor implements BeanPostProcessor, ApplicationContextAware {
 
@@ -177,4 +175,5 @@ public class MultiBeanPostProcessor implements BeanPostProcessor, ApplicationCon
 
         }
     }
+
 }
