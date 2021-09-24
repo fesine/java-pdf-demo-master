@@ -9,6 +9,8 @@ import java.lang.reflect.Field;
 import java.net.URL;
 import java.util.*;
 
+import static com.step.pdf.demo.multiconfig.constant.Constants.*;
+
 /**
  * @description: 类描述
  * @author: fesine
@@ -20,8 +22,7 @@ import java.util.*;
 @Slf4j
 public class ClassUtil {
 
-    public static final String FILE_PROTOCOL = "file";
-    public static final String CLASS_FILE = ".class";
+
 
     /**
      * 根据包名获取所有class文件
