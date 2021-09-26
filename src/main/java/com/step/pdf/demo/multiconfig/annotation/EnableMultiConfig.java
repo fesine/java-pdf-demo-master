@@ -33,5 +33,5 @@ public @interface EnableMultiConfig {
      * 配置文件入口
      * @return
      */
-    Class<? extends MultiBaseConfig>[] configs();
+    Class<? extends MultiBaseConfig>[] configs() default MultiBaseConfig.class;
 }

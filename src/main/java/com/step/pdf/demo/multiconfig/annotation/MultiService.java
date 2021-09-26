@@ -33,4 +33,11 @@ public @interface MultiService {
      */
     Class<?> config() default Object.class;
 
+    /**
+     * 实例完成依赖注入后，可通过此标记，执行初始化方法
+     * 暂时只支持无参方法
+     * @return
+     */
+    String initMethod() default "";
+
 }

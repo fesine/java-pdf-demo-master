@@ -10,12 +10,10 @@ import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.context.annotation.*;
 import org.springframework.core.annotation.AnnotationAttributes;
 import org.springframework.core.io.Resource;
-import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.core.type.classreading.MetadataReader;
 import org.springframework.core.type.filter.AnnotationTypeFilter;
 
-import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.*;
@@ -161,7 +159,7 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
         for (String basePackage : basePackages) {
             //包扫描
             String packageSearchPath = ResourcePatternResolver.CLASSPATH_ALL_URL_PREFIX +
-                    resolveBasePackage(basePackage) + File.separator + DEFAULT_RESOURCE_PATTERN;
+                    resolveBasePackage(basePackage) + '/' + DEFAULT_RESOURCE_PATTERN;
             //扫描包下所有的资源
             Resource[] resources = new Resource[0];
             try {
@@ -350,7 +348,7 @@ public class MultiBeanDefinitionScanner extends ClassPathBeanDefinitionScanner {
 
     private ResourcePatternResolver getResourcePatternResolver() {
         if (this.resourcePatternResolver == null) {
-            this.resourcePatternResolver = new PathMatchingResourcePatternResolver();
+            this.resourcePatternResolver = (ResourcePatternResolver)getResourceLoader();
         }
         return this.resourcePatternResolver;
     }

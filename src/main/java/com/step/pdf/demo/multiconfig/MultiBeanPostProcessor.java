@@ -14,6 +14,7 @@ import org.springframework.context.ApplicationContextAware;
 import org.springframework.util.StringUtils;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.Map;
 
@@ -34,7 +35,6 @@ public class MultiBeanPostProcessor implements BeanPostProcessor, ApplicationCon
     private ApplicationContext applicationContext;
 
     private String[] scanPackage;
-
 
 
     @Override
@@ -59,15 +59,23 @@ public class MultiBeanPostProcessor implements BeanPostProcessor, ApplicationCon
         }
         //获取服务提供者bean
         String groupValue = null;
-        if(target.getClass().isAnnotationPresent(ServiceGroup.class)){
+        //初始化方法
+        String initMethod = null;
+        if (target.getClass().isAnnotationPresent(ServiceGroup.class)) {
             //处理消费者引用
             ServiceGroup groupAnnotation =
                     target.getClass().getAnnotation(ServiceGroup.class);
             groupValue = groupAnnotation.value();
             if (ValidationUtil.isEmpty(groupValue)) {
-                log.warn(">>>>>>>>>>>>>>>>>[IOC]{} marked @ServiceGroup, but didn't set value.",beanName);
+                log.warn(">>>>>>>>>>>>>>>>>[IOC]{} marked @ServiceGroup, but didn't set value.",
+                        beanName);
                 return target;
             }
+        } else if (target.getClass().isAnnotationPresent(MultiService.class)) {
+            //处理消费者引用
+            MultiService multiAnnotation =
+                    target.getClass().getAnnotation(MultiService.class);
+            initMethod = multiAnnotation.initMethod();
         }
         Field[] fields = target.getClass().getDeclaredFields();
         for (Field field : fields) {
@@ -77,28 +85,38 @@ public class MultiBeanPostProcessor implements BeanPostProcessor, ApplicationCon
                 continue;
             }
             MultiService fieldAnnotation = field.getAnnotation(MultiService.class);
-            //groupValue == null 说明是MultiService注解
-            if(ValidationUtil.isEmpty(groupValue)){
+            //如果属性上指定引用服务组，临时覆盖类上注解标记的组
+            String tempGroup = null;
+            String[] group = fieldAnnotation.group();
+            if (!ValidationUtil.isEmpty(group)) {
+                tempGroup = group[0];
+            }
+            //groupValue == null 说明是MultiService注解类
+            if (ValidationUtil.isEmpty(groupValue)) {
                 //分割beanName，组装field beanName
                 String[] keyGroup = beanName.split(GROUP_SEPARATOR);
                 groupValue = keyGroup[0];
             }
-            String fieldBeanName = groupValue + GROUP_SEPARATOR + field.getType().getName();
+            String fieldBeanName =
+                    (tempGroup == null ? groupValue : tempGroup) + GROUP_SEPARATOR + field.getType().getName();
             try {
                 //处理配置文件引用
                 if (applicationContext.containsBean(fieldBeanName)) {
                     Object value = applicationContext.getBean(fieldBeanName);
-                    setBeanFieldValue(target, field, groupValue, value, fieldBeanName);
-                    return target;
+                    setBeanFieldValue(target, field, tempGroup == null ? groupValue : "field " +
+                            "group " + tempGroup + " covered class group " + groupValue, value,
+                            fieldBeanName);
                 } else {
                     //不包含当前bean，可能是接口或父类，则通过类型寻找
-                    Map<String, ?> fieldValueMap = applicationContext.getBeansOfType(field.getType());
+                    Map<String, ?> fieldValueMap =
+                            applicationContext.getBeansOfType(field.getType());
                     if (ValidationUtil.isEmpty(fieldValueMap)) {
-                        log.warn(">>>>>>>>>>>>>>>>>>[IOC]{} field {} can not reference from spring bean container.", beanName, field.getType().getName());
+                        log.warn(">>>>>>>>>>>>>>>>>>[IOC]{} field {} can not reference from " +
+                                "spring bean container.", beanName, field.getType().getName());
                         continue;
                     }
                     for (String key : fieldValueMap.keySet()) {
-                        if (!key.startsWith(groupValue + GROUP_SEPARATOR)) {
+                        if (!key.startsWith((tempGroup == null ? groupValue : tempGroup) + GROUP_SEPARATOR)) {
                             continue;
                         }
                         //处理注解中有name的属性值
@@ -106,21 +124,32 @@ public class MultiBeanPostProcessor implements BeanPostProcessor, ApplicationCon
                             String[] arr = key.split(GROUP_SEPARATOR);
                             //判断注册bean的最后一个key是否等于name的值
                             if (arr[arr.length - 1].equals(fieldAnnotation.name())) {
-                                setBeanFieldValue(target, field, groupValue,
+                                setBeanFieldValue(target, field, tempGroup == null ? groupValue :
+                                                "field group " + tempGroup + " covered class " +
+                                                        "group " + groupValue,
                                         fieldValueMap.get(key), key);
-                                return target;
                             }
                         } else {
-                            setBeanFieldValue(target, field, groupValue,
+                            setBeanFieldValue(target, field, tempGroup == null ? groupValue :
+                                            "field group " + tempGroup + " covered class group " + groupValue,
                                     fieldValueMap.get(key), key);
-                            return target;
                         }
+                        break;
                     }
                 }
 
             } catch (BeansException e) {
                 log.warn(">>>>>>>>>>>>>>>>>>[IOC]error set field value.{}", e.getMessage());
-
+            }
+        }
+        if (!ValidationUtil.isEmpty(initMethod)) {
+            try {
+                Method method = target.getClass().getDeclaredMethod(initMethod, null);
+                method.setAccessible(true);
+                method.invoke(target);
+            } catch (Exception e) {
+                log.warn(">>>>>>>>>>>>>>>>>>[IOC]{} error invoke initMethod {}.{}", beanName,
+                        initMethod, e.getMessage());
             }
         }
 
@@ -136,10 +165,11 @@ public class MultiBeanPostProcessor implements BeanPostProcessor, ApplicationCon
             Field advised = d.getClass().getDeclaredField("advised");
             advised.setAccessible(true);
             Object target = ((AdvisedSupport) advised.get(d)).getTargetSource().getTarget();
-            if (target == null){
+            if (target == null) {
                 return bean;
             }
-            log.info(">>>>>>>>>>>>>>>>>>[IOC]{} is proxy by cglib [{}] .",target.getClass().getName(),
+            log.info(">>>>>>>>>>>>>>>>>>[IOC]{} is proxy by cglib [{}] .",
+                    target.getClass().getName(),
                     bean.getClass().getName());
             return target;
         } catch (Exception e) {
@@ -149,14 +179,17 @@ public class MultiBeanPostProcessor implements BeanPostProcessor, ApplicationCon
 
     /**
      * 重新设值
+     *
      * @param bean
      * @param field
      */
-    private void setBeanFieldValue(Object bean, Field field,String group, Object value,String fieldBeanName) {
+    private void setBeanFieldValue(Object bean, Field field, String group, Object value,
+                                   String fieldBeanName) {
         try {
             field.setAccessible(true);
             field.set(bean, value);
-            log.info(">>>>>>>>>>>>>>>>>>[IOC]{} field {} set service group [{}] use reference [{}] success.",
+            log.info(">>>>>>>>>>>>>>>>>>[IOC]{} field {} set service group [{}] use reference " +
+                            "[{}] success.",
                     bean.getClass().getName(), field.getName(), group, fieldBeanName);
         } catch (Exception e) {
             //忽略异常
@@ -167,11 +200,13 @@ public class MultiBeanPostProcessor implements BeanPostProcessor, ApplicationCon
     @Override
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
         this.applicationContext = applicationContext;
-        try{
-            scanPackage = applicationContext.getBean(EnableMultiConfig.class.getName(), String[].class);
+        try {
+            scanPackage = applicationContext.getBean(EnableMultiConfig.class.getName(),
+                    String[].class);
             log.info(">>>>>>>>>>>>>>>>>>[IOC]scanPackage={}", Arrays.toString(scanPackage));
-        }catch (BeansException e){
-            log.warn(">>>>>>>>>>>>>>>>>>[IOC]scanPackage not configured，will not invoke multi service Ioc.");
+        } catch (BeansException e) {
+            log.warn(">>>>>>>>>>>>>>>>>>[IOC]scanPackage not configured，will not invoke multi " +
+                    "service Ioc.");
 
         }
     }
