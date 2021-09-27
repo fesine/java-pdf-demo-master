@@ -55,7 +55,7 @@ public class MultiBeanPostProcessor implements BeanPostProcessor, ApplicationCon
         //未标记MultiService和ServiceGroup不处理
         if (!target.getClass().isAnnotationPresent(MultiService.class)
                 && !target.getClass().isAnnotationPresent(ServiceGroup.class)) {
-            return target;
+            return bean;
         }
         //获取服务提供者bean
         String groupValue = null;
@@ -69,7 +69,7 @@ public class MultiBeanPostProcessor implements BeanPostProcessor, ApplicationCon
             if (ValidationUtil.isEmpty(groupValue)) {
                 log.warn(">>>>>>>>>>>>>>>>>[IOC]{} marked @ServiceGroup, but didn't set value.",
                         beanName);
-                return target;
+                return bean;
             }
         } else if (target.getClass().isAnnotationPresent(MultiService.class)) {
             //处理消费者引用
@@ -153,7 +153,7 @@ public class MultiBeanPostProcessor implements BeanPostProcessor, ApplicationCon
             }
         }
 
-        return target;
+        return bean;
     }
 
     private Object getCglibObject(Object bean) {
