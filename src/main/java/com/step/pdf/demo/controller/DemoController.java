@@ -3,10 +3,15 @@ package com.step.pdf.demo.controller;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.step.pdf.demo.config.PdfConfig;
-import com.step.pdf.demo.util.*;
+import com.step.pdf.demo.util.EchartsUtil;
+import com.step.pdf.demo.util.FreemarkerUtil;
+import com.step.pdf.demo.util.PdfUtil;
+import com.step.pdf.demo.util.PhantomjsUtil;
+import com.step.pdf.demo.websocket.server.WebSocketServer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import javax.servlet.http.HttpServletResponse;
@@ -23,6 +28,11 @@ public class DemoController {
 
     @Autowired
     private PdfConfig pdfConfig;
+
+    @GetMapping("send/{userId}")
+    public void sendMsg(@PathVariable String userId,@RequestParam String msg){
+        WebSocketServer.sendInfo(userId,msg);
+    }
 
     @GetMapping("init")
     public void init() throws IOException {

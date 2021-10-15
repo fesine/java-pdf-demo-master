@@ -3,7 +3,6 @@ package com.step.pdf.demo.websocket.server;
 
 import lombok.extern.slf4j.Slf4j;
 import org.apache.tomcat.websocket.WsSession;
-import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
 import javax.websocket.OnClose;
@@ -20,7 +19,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 @Slf4j
 @ServerEndpoint("/websocket/{userId}")
-@Component
+//@Component
 public class WebSocketServer {
     /**
      * 静态变量，用来记录当前在线连接数。应该把它设计成线程安全的。
@@ -89,7 +88,7 @@ public class WebSocketServer {
     public void onClose() {
         String sessionId = getSessionId(session);
         //根据sessionId找到userId
-        if (!SESSION_USER_MAP.contains(sessionId)) {
+        if (!SESSION_USER_MAP.containsKey(sessionId)) {
             return;
         }
         String userId = SESSION_USER_MAP.get(sessionId);
@@ -134,16 +133,18 @@ public class WebSocketServer {
     public void onMessage(String message, Session session) {
         String sessionId = getSessionId(session);
         log.info(">>>>>>>>>【WS消息通知系统】来自sessionId=[{}]的消息:[{}]",sessionId,message);
-        if (!SESSION_USER_MAP.contains(sessionId)) {
+        if (!SESSION_USER_MAP.containsKey(sessionId)) {
             return;
         }
         String userId = SESSION_USER_MAP.get(sessionId);
-        //群发消息
-        for (WebSocketServer item : USER_WS_LIST_MAP.get(userId)) {
-            try {
-                item.sendMessage(message);
-            } catch (IOException e) {
-                log.error(">>>>>>>>>【WS消息通知系统】来自userId=[{}]的消息发送异常:{}", userId, e);
+        if (USER_WS_LIST_MAP.containsKey(userId)) {
+            //群发消息
+            for (WebSocketServer item : USER_WS_LIST_MAP.get(userId)) {
+                try {
+                    item.sendMessage(message);
+                } catch (IOException e) {
+                    log.error(">>>>>>>>>【WS消息通知系统】来自userId=[{}]的消息发送异常:{}", userId, e);
+                }
             }
         }
     }
@@ -163,14 +164,18 @@ public class WebSocketServer {
      * @param message
      */
     public static void sendInfo(String userId, String message) {
-        log.info(">>>>>>>>>待发送给userId=[{}]的消息:[{}]", userId, message);
-        //群发消息
-        for (WebSocketServer item : USER_WS_LIST_MAP.get(userId)) {
-            try {
-                item.sendMessage(message);
-            } catch (IOException e) {
-                log.error(">>>>>>>>>【WS消息通知系统】发送给userId=[{}]的消息，异常:{}", userId, e);
+        log.info(">>>>>>>>>【WS消息通知系统】待发送给userId=[{}]的消息:[{}]", userId, message);
+        if(USER_WS_LIST_MAP.containsKey(userId)){
+            //群发消息
+            for (WebSocketServer item : USER_WS_LIST_MAP.get(userId)) {
+                try {
+                    item.sendMessage(message);
+                } catch (IOException e) {
+                    log.error(">>>>>>>>>【WS消息通知系统】发送给userId=[{}]的消息，异常:{}", userId, e);
+                }
             }
+        }else{
+            log.info(">>>>>>>>>【WS消息通知系统】没有找到待发送的用户。userId=[{}]", userId);
         }
     }
 
